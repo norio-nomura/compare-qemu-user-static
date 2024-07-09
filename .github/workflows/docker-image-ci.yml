@@ -1,0 +1,154 @@
+name: Docker Image CI
+
+on:
+  create:
+  push:
+    branches: [master]
+    paths:
+      - '.github/actions/*/action.yml'
+      - '.github/workflows/docker-image-ci.yml'
+      - 'Dockerfile'
+      - '**.swift'
+  pull_request:
+    paths:
+      - '.github/actions/*/action.yml'
+      - '.github/workflows/docker-image-ci.yml'
+      - '**.swift'
+
+jobs:
+  use-qemu-user-static:
+    runs-on: ubuntu-${{ matrix.ubuntu_version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu_version:
+          - '20.04'
+          - '22.04' # latest
+          - '24.04'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: sudo apt-get update && sudo apt-get install -y qemu-user-static
+
+      - uses: ./.github/actions/configure-docker-containerd-image-store
+        with:
+          USE_CONTAINERD: true
+
+      - name: build arm64 architecture
+        uses: docker/build-push-action@v5
+        with:
+          load: true
+          platforms: linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  use-qemu-user-static-from_debian:
+    name: qemu-user-static from debian ${{ matrix.target_release }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target_release:
+          - 'buster'              # 1:3.1+dfsg-8+deb10u12
+          - 'bullseye'            # 1:5.2+dfsg-11+deb11u3
+          - 'bullseye-backports'  # 1:7.2+dfsg-7+deb12u2~bpo11+1
+          - 'bookworm'            # 1:7.2+dfsg-7+deb12u6
+          - 'bookworm-backports'  # 1:8.2.1+ds-1~bpo12+1
+          - 'trixie'              # 1:8.2.4+ds-1
+          - 'sid'                 # 1:9.0.1+ds-1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/install_qemu_user_static_from_debian
+        with:
+          TARGET_RELEASE: ${{ matrix.target_release }}
+
+      - uses: ./.github/actions/configure-docker-containerd-image-store
+        with:
+          USE_CONTAINERD: true
+
+      - name: build arm64 architecture
+        uses: docker/build-push-action@v5
+        with:
+          load: true
+          platforms: linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  use-tonistiigi_binfmt:
+    name: tonistiigi/binfmt:${{ matrix.tag }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tag:
+          - latest
+          - qemu-v5.0.1
+          - qemu-v5.1.0
+          - qemu-v5.2.0
+          - qemu-v6.0.0
+          - qemu-v6.1.0
+          - qemu-v6.2.0
+          - qemu-v7.0.0 # latest
+          - qemu-v8.0.4
+          - qemu-v8.1.4
+          - qemu-v8.1.5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          image: tonistiigi/binfmt:${{ matrix.tag }}
+          platforms: linux/arm64
+
+      - uses: ./.github/actions/configure-docker-containerd-image-store
+        with:
+          USE_CONTAINERD: true
+
+      - name: build arm64 architecture
+        uses: docker/build-push-action@v5
+        with:
+          load: true
+          platforms: linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  use-multiarch_qemu-user-static:
+    name: multiarch/qemu-user-static:${{ matrix.tag }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tag:
+          - latest
+          - 3.1.1-2
+          - 4.0.0-5
+          - 4.1.1-1
+          - 4.2.0-7
+          - 5.0.0-5
+          - 5.1.0-8
+          - 5.2.0-2
+          - 6.1.0-8
+          - 7.0.0-7
+          - 7.1.0-2
+          - 7.2.0-1 # latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: docker run --rm --privileged multiarch/qemu-user-static:${{ matrix.tag }} --reset -p yes
+
+      - uses: ./.github/actions/configure-docker-containerd-image-store
+        with:
+          USE_CONTAINERD: true
+
+      - name: build arm64 architecture
+        uses: docker/build-push-action@v5
+        with:
+          load: true
+          platforms: linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
