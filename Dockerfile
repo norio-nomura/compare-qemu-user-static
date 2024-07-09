@@ -1,12 +1,9 @@
 # syntax=docker/dockerfile:1
 
-FROM swift:5.10
-WORKDIR /app
-COPY Sources /app/Sources
-COPY Package.* /app
-ARG TARGETPLATFORM
-RUN --mount=type=cache,target=/app/.build,sharing=locked,id=${TARGETPLATFORM} \
-    swift build -c release --product hello-world && \
-    install $(swift build -c release --show-bin-path)/hello-world /usr/local/bin
-RUN hello-world
-CMD ["hello-world"]
+FROM ghcr.io/norio-nomura/swiftlint:slim
+# remove stub script
+RUN test ! -x /usr/local/bin/swiftlint || rm /usr/local/bin/swiftlint
+
+SHELL ["/bin/bash", "-eux", "-o", "pipefail", "-c"]
+RUN ["timeout", "--preserve-status", "--kill-after=60", "120", "swiftlint", "version"]
+RUN echo "_ = 0" | timeout --preserve-status --kill-after=60 120 swiftlint --use-stdin

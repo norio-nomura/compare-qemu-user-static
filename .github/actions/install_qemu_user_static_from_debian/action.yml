@@ -41,4 +41,5 @@ runs:
         TARGET_FLAG=${TARGET_RELEASE:+-t $TARGET_RELEASE}
         VERSION_REQUIREMENT=${VERSION:+=$VERSION}
         sudo apt-get update && sudo apt-get $TARGET_FLAG install -y qemu-user-static$VERSION_REQUIREMENT
+        sudo systemctl restart systemd-binfmt
       shell: bash
