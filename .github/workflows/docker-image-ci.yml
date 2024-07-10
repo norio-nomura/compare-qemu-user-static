@@ -8,48 +8,59 @@ on:
       - '.github/actions/*/action.yml'
       - '.github/workflows/docker-image-ci.yml'
       - 'Dockerfile'
-      - '**.swift'
   pull_request:
     paths:
       - '.github/actions/*/action.yml'
       - '.github/workflows/docker-image-ci.yml'
-      - '**.swift'
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  NUMBER_OF_TRIES: 10
 
 jobs:
-  use-qemu-user-static:
-    runs-on: ubuntu-${{ matrix.ubuntu_version }}
+  qemu-user-static-ubuntu:
+    name: qemu-user-static (ubuntu-${{ matrix.version }})
+    runs-on: ubuntu-${{ matrix.version }}
     strategy:
       fail-fast: false
       matrix:
-        ubuntu_version:
+        version:
           - '20.04'
           - '22.04' # latest
-          - '24.04'
-
+          - '24.04'    
     steps:
       - uses: actions/checkout@v4
+      
+      - name: install qemu-user-static
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
 
-      - run: sudo apt-get update && sudo apt-get install -y qemu-user-static
+      - name: print qemu-user-static version
+        run: |
+          echo "::notice title=${{ github.job }}:${{ matrix.version }}::qemu-user-static:$(dpkg-query --show --showformat='${Version}' qemu-user-static)"
 
       - uses: ./.github/actions/configure-docker-containerd-image-store
-        with:
-          USE_CONTAINERD: true
 
-      - name: build arm64 architecture
-        uses: docker/build-push-action@v5
-        with:
-          load: true
-          platforms: linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: try to build docker image
+        run: |
+          docker pull --platform linux/arm64 ghcr.io/norio-nomura/swiftlint:slim
+          for i in $(seq 1 ${{ env.NUMBER_OF_TRIES }}); do
+            timeout --preserve-status --kill-after=60 240 docker buildx build --load --no-cache --platform linux/arm64 . && continue
+            echo "::error title=${{ github.job }} failed::on iteration:$i"
+            exit 1
+          done
 
-  use-qemu-user-static-from_debian:
-    name: qemu-user-static from debian ${{ matrix.target_release }}
+  qemu-user-static-debian:
+    name: qemu-user-static (debian ${{ matrix.version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        target_release:
+        version:
           - 'buster'              # 1:3.1+dfsg-8+deb10u12
           - 'bullseye'            # 1:5.2+dfsg-11+deb11u3
           - 'bullseye-backports'  # 1:7.2+dfsg-7+deb12u2~bpo11+1
@@ -57,33 +68,36 @@ jobs:
           - 'bookworm-backports'  # 1:8.2.1+ds-1~bpo12+1
           - 'trixie'              # 1:8.2.4+ds-1
           - 'sid'                 # 1:9.0.1+ds-1
-
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/install_qemu_user_static_from_debian
+      - name: install qemu-user-static from debian
+        uses: ./.github/actions/install_qemu_user_static_from_debian
         with:
-          TARGET_RELEASE: ${{ matrix.target_release }}
+          TARGET_RELEASE: ${{ matrix.version }}
+
+      - name: print qemu-user-static version
+        run: |
+          echo "::notice title=${{ github.job }}:${{ matrix.version }}::qemu-user-static:$(dpkg-query --show --showformat='${Version}' qemu-user-static)"
 
       - uses: ./.github/actions/configure-docker-containerd-image-store
-        with:
-          USE_CONTAINERD: true
 
-      - name: build arm64 architecture
-        uses: docker/build-push-action@v5
-        with:
-          load: true
-          platforms: linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: try to build docker image
+        run: |
+          docker pull --platform linux/arm64 ghcr.io/norio-nomura/swiftlint:slim
+          for i in $(seq 1 ${{ env.NUMBER_OF_TRIES }}); do
+            timeout --preserve-status --kill-after=60 240 docker buildx build --load --no-cache --platform linux/arm64 . && continue
+            echo "::error title=${{ github.job }} failed::on iteration:$i"
+            exit 1
+          done
 
   use-tonistiigi_binfmt:
-    name: tonistiigi/binfmt:${{ matrix.tag }}
+    name: tonistiigi/binfmt:${{ matrix.version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        tag:
+        version:
           - latest
           - qemu-v5.0.1
           - qemu-v5.1.0
@@ -95,34 +109,37 @@ jobs:
           - qemu-v8.0.4
           - qemu-v8.1.4
           - qemu-v8.1.5
-
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
+      - name: install qemu-user-static
+        uses: docker/setup-qemu-action@v3
         with:
-          image: tonistiigi/binfmt:${{ matrix.tag }}
+          image: tonistiigi/binfmt:${{ matrix.version }}
           platforms: linux/arm64
 
+      - name: print qemu-user-static version
+        run: |
+          echo "::notice title=${{ github.job }}:${{ matrix.version }}::qemu-user-static:${{ matrix.version }}"
+  
       - uses: ./.github/actions/configure-docker-containerd-image-store
-        with:
-          USE_CONTAINERD: true
 
-      - name: build arm64 architecture
-        uses: docker/build-push-action@v5
-        with:
-          load: true
-          platforms: linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: try to build docker image
+        run: |
+          docker pull --platform linux/arm64 ghcr.io/norio-nomura/swiftlint:slim
+          for i in $(seq 1 ${{ env.NUMBER_OF_TRIES }}); do
+            timeout --preserve-status --kill-after=60 240 docker buildx build --load --no-cache --platform linux/arm64 . && continue
+            echo "::error title=${{ github.job }} failed::on iteration:$i"
+            exit 1
+          done
 
   use-multiarch_qemu-user-static:
-    name: multiarch/qemu-user-static:${{ matrix.tag }}
+    name: multiarch/qemu-user-static:${{ matrix.version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        tag:
+        version:
           - latest
           - 3.1.1-2
           - 4.0.0-5
@@ -135,20 +152,23 @@ jobs:
           - 7.0.0-7
           - 7.1.0-2
           - 7.2.0-1 # latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - run: docker run --rm --privileged multiarch/qemu-user-static:${{ matrix.tag }} --reset -p yes
+      - name: install qemu-user-static
+        run: docker run --rm --privileged multiarch/qemu-user-static:${{ matrix.version }} --reset -p yes
 
+      - name: print qemu-user-static version
+        run: |
+          echo "::notice title=${{ github.job }}:${{ matrix.version }}::qemu-user-static:${{ matrix.version }}"
+  
       - uses: ./.github/actions/configure-docker-containerd-image-store
-        with:
-          USE_CONTAINERD: true
 
-      - name: build arm64 architecture
-        uses: docker/build-push-action@v5
-        with:
-          load: true
-          platforms: linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: try to build docker image
+        run: |
+          docker pull --platform linux/arm64 ghcr.io/norio-nomura/swiftlint:slim
+          for i in $(seq 1 ${{ env.NUMBER_OF_TRIES }}); do
+            timeout --preserve-status --kill-after=60 240 docker buildx build --load --no-cache --platform linux/arm64 . && continue
+            echo "::error title=${{ github.job }} failed::on iteration:$i"
+            exit 1
+          done
